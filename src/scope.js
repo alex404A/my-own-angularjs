@@ -6,6 +6,10 @@ var _ = require('lodash');
 function Scope() {
   this.$$watchers = [];
   this.$$lastDirtyWatch = null;
+  this.$$asyncQueue = [];
+  this.$$applyAsyncQueue = [];
+  this.$$applyAsyncId = null;
+  this.$$phase = null;
 }
 
 function initWatchVal() {}
@@ -69,10 +73,81 @@ Scope.prototype.$$digestOnce = function() {
 Scope.prototype.$digest = function() {
   var dirty;
   var ttl = 10;
+  this.$$lastDirtyWatch = null;
+  this.$$beginPhase('$digest');
+
+  if (this.$$applyAsyncId) {
+    clearTimeout(this.$$applyAsyncId);
+    this.$$flushApplyAsync();
+  }
+
   do {
+    while (this.$$asyncQueue.length) {
+      var asyncTask = this.$$asyncQueue.shift();
+      asyncTask.scope.$eval(asyncTask.expression);
+    }
     dirty = this.$$digestOnce();
-    if (dirty && !(ttl--)) {
+    if ((dirty || this.$$asyncQueue.length) && !(ttl--)) {
+      this.$$clearPhase();
       throw '10 digest iterations reached'
     }
-  } while(dirty);
+  } while(dirty || this.$$asyncQueue.length);
+  this.$$clearPhase();
 }
+
+Scope.prototype.$eval = function(expr, locals) {
+  return expr(this, locals);
+}
+
+Scope.prototype.$apply = function(expr) {
+  try {
+    this.$$beginPhase('$apply');
+    return this.$eval(expr);
+  } finally {
+    this.$$clearPhase();
+    this.$digest();
+  }
+}
+
+Scope.prototype.$evalAsync = function(expr) {
+  var self = this;
+  if (!self.$$phase && !self.$$asyncQueue.length) {
+    setTimeout(function() {
+      if (self.$$asyncQueue.length) {
+        self.$digest();
+      }
+    }, 0);
+  }
+  this.$$asyncQueue.push({scope:this, expression: expr});
+}
+
+Scope.prototype.$$beginPhase = function(phase) {
+  if (this.$$phase) {
+    throw this.$$phase + 'already in progress';
+  }
+  this.$$phase = phase;
+}
+
+Scope.prototype.$$clearPhase = function() {
+  this.$$phase = null;
+}
+
+Scope.prototype.$applyAsync = function(expr) {
+  var self = this;
+  self.$$applyAsyncQueue.push(function() {
+    self.$eval(expr);
+  });
+  if (self.$$applyAsyncId === null) {
+    self.$$applyAsyncId = setTimeout(function() {
+      self.$apply(_.bind(self.$$flushApplyAsync, self));
+    }, 0);
+  }
+}
+
+Scope.prototype.$$flushApplyAsync = function() {
+  while (this.$$applyAsyncQueue.length) {
+    this.$$applyAsyncQueue.shift()();
+  }
+  this.$$applyAsyncId = null;
+}
+

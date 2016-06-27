@@ -9,7 +9,7 @@ module.exports = function(config) {
       'test/**/*.js': ['jshint', 'browserify'],
       'src/**/*.js': ['jshint', 'browserify']
     },
-    //logLevel: 'LOG_DEBUG',
+    logLevel: 'LOG_DEBUG',
     browsers: ['PhantomJS'],
     browserify: {
       debug: true,
