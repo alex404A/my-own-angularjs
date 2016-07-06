@@ -11,7 +11,7 @@ describe('Scope', function() {
     expect(scope.aProperty).toBe(1);
   });
 
-  describe('digest', function() {
+  describe('$digest', function() {
 
     var scope;
 
@@ -507,7 +507,7 @@ describe('Scope', function() {
 
   });
 
-  describe('evalAsync', function() {
+  describe('$evalAsync', function() {
 
     var scope;
 
@@ -639,7 +639,7 @@ describe('Scope', function() {
 
   });
 
-  describe('applyAsync', function() {
+  describe('$applyAsync', function() {
 
     var scope;
 
@@ -1022,6 +1022,778 @@ describe('Scope', function() {
 
     });
 
+
+  });
+
+  describe('inheritance', function() {
+
+    it('inherits the parents\'s propertities', function() {
+      var parent = new Scope();
+      parent.aValue = [1, 2, 3];
+
+      var child = parent.$new();
+      expect(child.aValue).toEqual([1, 2, 3]);
+    });
+
+    it('does not catse a parent to inherit its propertities', function() {
+      var parent = new Scope();
+
+      var child = parent.$new();
+      child.aValue = [1, 2, 3];
+      expect(parent.aValue).toBeUndefined();
+    });
+
+    it('inherit parents propertities whenever they are defined', function() {
+      var parent = new Scope();
+
+      var child = parent.$new();
+      parent.aValue = [1, 2, 3];
+      expect(child.aValue).toEqual([1, 2, 3]);
+    });
+
+    it('can manipulate a parent scopes property', function() {
+      var parent = new Scope();
+
+      var child = parent.$new();
+      parent.aValue = [1, 2, 3];
+      child.aValue.push(4);
+
+      expect(child.aValue).toEqual([1, 2, 3, 4]);
+      expect(parent.aValue).toEqual([1, 2, 3, 4]);
+    });
+
+    it('can watch a property in the parent', function() {
+      var parent = new Scope();
+
+      var child = parent.$new();
+      parent.aValue = [1, 2, 3];
+      child.counter = 0;
+
+      child.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        },
+        true
+      );
+      
+      child.$digest();
+      expect(child.counter).toBe(1);
+      child.aValue.push(4);
+      child.$digest();
+      expect(child.counter).toBe(2);
+    });
+
+    it('can be nested at any depth', function() {
+      var a = new Scope();
+      var aa = a.$new();
+      var aaa = aa.$new();
+      var aab = aa.$new();
+      var ab = a. $new();
+      var abb = ab.$new();
+
+      a.value = 1;
+
+      expect(aa.value).toBe(1);
+      expect(aaa.value).toBe(1);
+      expect(aab.value).toBe(1);
+      expect(ab.value).toBe(1);
+      expect(abb.value).toBe(1);
+
+      ab.anotherValue = 2;
+
+      expect(abb.anotherValue).toBe(2);
+      expect(aa.anotherValue).toBeUndefined();
+      expect(aaa.anotherValue).toBeUndefined();
+    });
+
+    it('shadows a parents property with the same name', function() {
+      var parent = new Scope();
+      var child = parent.$new();
+
+      parent.name = 'Joe';
+      child.name = 'Jill';
+
+      expect(parent.name).toBe('Joe');
+      expect(child.name).toBe('Jill');
+    });
+
+    it('does not shadow members of parent scopes attributes', function() {
+      var parent = new Scope();
+      var child = parent.$new();
+
+      parent.user = {name: 'Joe'};
+      child.user.name = 'Jill';
+
+      expect(parent.user.name).toBe('Jill');
+      expect(child.user.name).toBe('Jill');
+    });
+
+    it('does not digest its parents', function() {
+      var parent = new Scope();
+      var child = parent.$new();
+
+      parent.aValue = 'abc';
+      parent.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.aValueWas = newValue;
+        }
+      );
+      
+      child.$digest()
+      expect(child.aValueWas).toBeUndefined();
+    });
+
+    it('keeps a record of its children', function() {
+      var parent = new Scope();
+      var child1 = parent.$new();
+      var child2 = parent.$new();
+      var child2_1 = child2.$new();
+      
+      expect(parent.$$children.length).toBe(2);
+      expect(parent.$$children[0]).toBe(child1);
+      expect(parent.$$children[1]).toBe(child2);
+      expect(child1.$$children.length).toBe(0);
+      expect(child2.$$children.length).toBe(1);
+      expect(child2.$$children[0]).toBe(child2_1);
+    });
+
+    it('digests its children', function() {
+      var parent = new Scope();
+      var child = parent.$new();
+
+      parent.aValue = 'abc';
+      parent.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.aValueWas = newValue;
+        }
+      );
+      
+      parent.$digest()
+      expect(child.aValueWas).toBe('abc');
+    });
+
+    it('digests from root on $apply', function() {
+      var parent = new Scope();
+      var child = parent.$new();
+      var child2 = child.$new();
+
+      parent.aValue = 'abc';
+      parent.counter = 0;
+      parent.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      child2.$apply(function(scope) {});
+      expect(parent.counter).toBe(1);
+    });
+
+    it('schedule a digest from root on $evalAsync', function(done) {
+      var parent = new Scope();
+      var child = parent.$new();
+      var child2 = child.$new();
+
+      parent.aValue = 'abc';
+      parent.counter = 0;
+      parent.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      child2.$evalAsync(function(scope) {});
+      setTimeout(function() {
+        expect(parent.counter).toBe(1);
+        done();
+      }, 50);
+    });
+
+    it('does not have access to parent attributes when isolated', function() {
+      var parent = new Scope();
+      var child = parent.$new(true);
+
+      parent.aValue = 'abc';
+      
+      expect(child.aValue).toBeUndefined();
+    });
+
+    it('cannot watch parent attributes when isolated', function() {
+      var parent = new Scope();
+      var child = parent.$new(true);
+
+      parent.aValue = 'abc';
+      child.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.aValueWas = newValue;
+        }
+      );
+      
+      child.$digest();
+      expect(child.aValueWas).toBeUndefined();
+    });
+
+    it('digests its isolated children', function() {
+      var parent = new Scope();
+      var child = parent.$new(true);
+
+      child.aValue = 'abc';
+      child.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.aValueWas = newValue;
+        }
+      );
+      
+      parent.$digest();
+      expect(child.aValueWas).toBe('abc');
+    });
+
+    it('digests from root on $apply when isolated', function() {
+      var parent = new Scope();
+      var child = parent.$new(true);
+      var child2 = child.$new();
+
+      parent.aValue = 'abc';
+      parent.counter = 0;
+      parent.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      child2.$apply(function() {});
+      expect(parent.counter).toBe(1);
+    });
+
+    it('schedules a digest from root on $evalAsync when isolated', function(done) {
+      var parent = new Scope();
+      var child = parent.$new(true);
+      var child2 = child.$new();
+
+      parent.aValue = 'abc';
+      parent.counter = 0;
+      parent.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      child2.$evalAsync(function() {});
+      setTimeout(function() {
+        expect(parent.counter).toBe(1);
+        done();
+      }, 50);
+    });
+
+    it('executes $evalAsync functions on isolated scopes', function(done) {
+      var parent = new Scope();
+      var child = parent.$new(true);
+
+      child.$evalAsync(
+        function(scope) {scope.didEvalAsync = true;}
+      );
+      
+      setTimeout(function() {
+        expect(child.didEvalAsync).toBe(true);
+        done();
+      }, 50);
+    });
+
+    it('executes $$postDigest functions on isolated scopes', function() {
+      var parent = new Scope();
+      var child = parent.$new(true);
+
+      child.$$postDigest(
+        function() {child.didPostDigest = true;}
+      );
+      
+      parent.$digest();
+      expect(child.didPostDigest).toBe(true);
+    });
+
+    it('executes $applyAsync functions on isolated scopes', function() {
+      var parent = new Scope();
+      var child = parent.$new(true);
+      var applied = false;
+
+      child.$applyAsync(
+        function() {applied = true;}
+      );
+      
+      child.$digest();
+      expect(applied).toBe(true);
+    });
+
+    it('can take some other scope as the parent', function() {
+      var prototypeParent = new Scope();
+      var hierarchyParent = new Scope();
+      var child = prototypeParent.$new(false, hierarchyParent);
+
+      prototypeParent.a = 42;
+      expect(child.a).toBe(42);
+
+      child.counter = 0;
+      child.$watch(
+        function(scope) {scope.counter++;}
+      );
+      
+      prototypeParent.$digest();
+      expect(child.counter).toBe(0);
+      hierarchyParent.$digest();
+      expect(child.counter).toBe(2);
+    });
+
+    it('is no longer digested when $destroy has been called', function() {
+      var parent = new Scope();
+      var child = parent.$new();
+
+      child.aValue = [0, 1, 2];
+      child.counter = 0;
+      child.$watch(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        },
+        true
+      );
+      
+      parent.$digest();
+      expect(child.counter).toBe(1);
+
+      child.aValue.push(4);
+      parent.$digest();
+      expect(child.counter).toBe(2);
+
+      child.$destroy();
+      child.aValue.push(5);
+      parent.$digest();
+      expect(child.counter).toBe(2);
+    });
+
+  });
+
+  describe('$watchCollection', function() {
+
+    var scope;
+
+    beforeEach(function(){
+      scope = new Scope();
+    });
+
+    it('works like a nrmal watch for non-collections', function() {
+      var valueProvided;
+
+      scope.aValue = 42;
+      scope.counter = 0;
+      scope.$watchCollection(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          valueProvided = newValue;
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+      expect(valueProvided).toBe(scope.aValue);
+
+      scope.aValue = 43;
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('works like a nrmal watch for NaNs', function() {
+      scope.aValue = 0/0;
+      scope.counter = 0;
+      scope.$watchCollection(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+    });
+
+    it('notices when the value becomes an array', function() {
+      scope.counter = 0;
+      scope.$watchCollection(
+        function(scope) {return scope.arr;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.arr = [1, 2, 3];
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('notices an item added to an array', function() {
+      scope.counter = 0;
+      scope.arr = [1, 2, 3];
+
+      scope.$watchCollection(
+        function(scope) {return scope.arr;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.arr.push(4);
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('notices an item removed from an array', function() {
+      scope.counter = 0;
+      scope.arr = [1, 2, 3];
+
+      scope.$watchCollection(
+        function(scope) {return scope.arr;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.arr.shift();
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('notices an item replaced in an array', function() {
+      scope.counter = 0;
+      scope.arr = [1, 2, 3];
+
+      scope.$watchCollection(
+        function(scope) {return scope.arr;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.arr[1] = 42;
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('notices an item recorded in an array', function() {
+      scope.counter = 0;
+      scope.arr = [2, 1, 3];
+
+      scope.$watchCollection(
+        function(scope) {return scope.arr;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.arr.sort();
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('does not fail on NaNs in an array', function() {
+      scope.counter = 0;
+      scope.arr = [2, NaN, 3];
+
+      scope.$watchCollection(
+        function(scope) {return scope.arr;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+    });
+
+    it('notices an item replaced in an arguments object', function() {
+      (function() { 
+        scope.arrayLike = arguments;
+      })(1, 2, 3);
+      scope.counter = 0;
+
+      scope.$watchCollection(
+        function(scope) {return scope.arrayLike;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.arrayLike[1] = 42;
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('notices an item replaced in a NodeList object', function() {
+      document.documentElement.appendChild(document.createElement('div'));
+      scope.arrayLike = document.getElementsByTagName('div');
+
+      scope.counter = 0;
+
+      scope.$watchCollection(
+        function(scope) {return scope.arrayLike;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      document.documentElement.appendChild(document.createElement('div'));
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('notices when the value becomes an object', function() {
+      scope.counter = 0;
+      scope.$watchCollection(
+        function(scope) {return scope.obj;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.obj = {a: 1};
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('notices when an attribute is added to an object', function() {
+      scope.counter = 0;
+      scope.obj = {a: 1};
+      scope.$watchCollection(
+        function(scope) {return scope.obj;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.obj.b = 2;
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('notices when an attribute is changed to an object', function() {
+      scope.counter = 0;
+      scope.obj = {a: 1};
+      scope.$watchCollection(
+        function(scope) {return scope.obj;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.obj.a = 2;
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('does not fail on NaNs in an object', function() {
+      scope.counter = 0;
+      scope.obj = {a: NaN};
+
+      scope.$watchCollection(
+        function(scope) {return scope.obj;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+    });
+
+    it('notices when an attribute is removed from an object', function() {
+      scope.counter = 0;
+      scope.obj = {a: 1};
+      scope.$watchCollection(
+        function(scope) {return scope.obj;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      delete scope.obj.a;
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('does not consider any object with a length property as an array', function() {
+      scope.counter = 0;
+      scope.obj = {
+        length: 42,
+        otherKey: 'abc' 
+      };
+
+      scope.$watchCollection(
+        function(scope) {return scope.obj;},
+        function(newValue, oldValue, scope) {
+          scope.counter++;
+        }
+      );
+      
+      scope.$digest();
+      expect(scope.counter).toBe(1);
+
+      scope.obj.newKey = 'def';
+      scope.$digest();
+      expect(scope.counter).toBe(2);
+    });
+
+    it('give the old non-collection value to listeners', function() {
+      scope.aValue = 42;
+      var oldValueGiven;
+
+      scope.$watchCollection(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          oldValueGiven = oldValue;
+        }
+      );
+      
+      scope.$digest();
+
+      scope.aValue = 43;
+      scope.$digest();
+
+      expect(oldValueGiven).toBe(42);
+    });
+
+    it('give the old array value to listeners', function() {
+      scope.aValue = [1, 2, 3];
+      var oldValueGiven;
+
+      scope.$watchCollection(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          oldValueGiven = oldValue;
+        }
+      );
+      
+      scope.$digest();
+
+      scope.aValue.push(4);
+      scope.$digest();
+
+      expect(oldValueGiven).toEqual([1, 2, 3]);
+    });
+
+    it('give the old object value to listeners', function() {
+      scope.aValue = {a: 1, b: 2};
+      var oldValueGiven;
+
+      scope.$watchCollection(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          oldValueGiven = oldValue;
+        }
+      );
+      
+      scope.$digest();
+
+      scope.aValue.c = 3;
+      scope.$digest();
+
+      expect(oldValueGiven).toEqual({a: 1, b: 2});
+    });
+
+    it('uses the new value as the old value on first digest', function() {
+      scope.aValue = {a: 1, b: 2};
+      var oldValueGiven;
+
+      scope.$watchCollection(
+        function(scope) {return scope.aValue;},
+        function(newValue, oldValue, scope) {
+          oldValueGiven = oldValue;
+        }
+      );
+      
+      scope.$digest();
+
+      expect(oldValueGiven).toEqual({a: 1, b: 2});
+    });
 
   });
 
